@@ -1,27 +1,16 @@
-# ---------------------------------------------------------------
-# Predicción de Aprobación de Préstamos Bancarios
-# ---------------------------------------------------------------
-
-# Cargar librerías necesarias
 library(rpart)
 library(rpart.plot)
 library(caret)
 library(dplyr)
 library(ggplot2)
 library(randomForest)
+library(reshape2)
 
-# Limpiar el ambiente de trabajo
 rm(list=ls())
 cat("\014")
 if(!is.null(dev.list())) dev.off()
 graphics.off()
 
-# Configurar directorio de trabajo (ajustar según necesidades)
-# setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
-
-# ---------------------------------------------------------------
-# 1. Cargar y explorar los datos
-# ---------------------------------------------------------------
 data <- read.csv("../data/2025_loan_approval_dataset.csv")
 
 # Revisar estructura de los datos
@@ -29,12 +18,132 @@ str(data)
 summary(data)
 
 # Verificar valores faltantes
-missing_values <- colSums(is.na(data))
+valoresFaltantes <- colSums(is.na(data))
 print("Valores faltantes por columna:")
-print(missing_values)
+print(valoresFaltantes)
 
 # ---------------------------------------------------------------
-# 2. Preprocesamiento de datos
+# 2. Análisis de Rangos para Préstamos Bancarios
+# ---------------------------------------------------------------
+
+# Verificar la idoneidad del uso de todos los atributos del dataset
+# Identificar variables numéricas del dataset
+varNum <- sapply(data, is.numeric)
+numeric_columns <- names(data)[varNum]
+print("Variables numéricas en el dataset:")
+print(numeric_columns)
+
+# Estadísticas descriptivas de variables numéricas
+summary(data[, numeric_columns])
+
+# Función para visualizar la relación entre variables numéricas y loan_status
+visualize_numeric_relationship <- function(data, var_name) {
+  p <- ggplot(data, aes(x = .data[[var_name]], y = loan_status)) + 
+    geom_point(alpha = 0.5) +
+    labs(title = paste("Relación entre", var_name, "y aprobación de préstamo"),
+         x = var_name, y = "Estado del préstamo") +
+    theme_minimal()
+  
+  # Añadir anotación sobre rangos - especificando el valor de y correctamente
+  if(var_name == "income_annum") {
+    # Usar un valor de y que exista en los niveles de loan_status
+    y_pos <- as.character(levels(data$loan_status)[1])
+    p <- p + annotate("text", 
+                      x = max(data[[var_name]], na.rm = TRUE) * 0.7, 
+                      y = y_pos, 
+                      label = "Este gráfico nos puede ayudar a\nestablacer rangos adecuados", 
+                      color = "darkred", size = 3.5, hjust = 0)
+  }
+  
+  print(p)
+  return(p)
+}
+
+# Visualizar relaciones para variables numéricas importantes
+key_numeric_vars <- c("income_annum", "loan_amount", "loan_term", "cibil_score")
+plots <- list()
+
+for(var in key_numeric_vars) {
+  dev.new()
+  plots[[var]] <- visualize_numeric_relationship(data, var)
+}
+
+# Crear rangos para income_annum (ingresos anuales)
+cat("\nCreando rangos para income_annum con umbrales constantes:\n")
+data$income_range <- ifelse(data$income_annum <= 2500000, "Bajo", 
+                            ifelse(data$income_annum <= 5000000, "Medio", "Alto"))
+
+# Crear rangos para cibil_score (puntuación crediticia)
+cat("\nCreando rangos para cibil_score con umbrales constantes:\n")
+data$cibil_range <- ifelse(data$cibil_score <= 600, "Riesgo Alto",
+                           ifelse(data$cibil_score <= 750, "Riesgo Medio", "Riesgo Bajo"))
+
+# Verificar la distribución de los nuevos rangos
+print("Distribución de rangos de ingresos:")
+print(table(data$income_range))
+
+print("Distribución de rangos de puntuación crediticia:")
+print(table(data$cibil_range))
+
+# Analizar la relación entre los rangos creados y la aprobación de préstamos
+print("Relación entre rangos de ingresos y aprobación de préstamos:")
+print(table(data$income_range, data$loan_status))
+
+print("Relación entre rangos de puntuación crediticia y aprobación de préstamos:")
+print(table(data$cibil_range, data$loan_status))
+
+# Crear rangos uniformes para loan_amount (monto del préstamo)
+cat("\nCreando rangos uniformes para loan_amount:\n")
+data$loan_amount_range <- cut(data$loan_amount, breaks = 4)
+
+# Crear rangos uniformes para loan_term (plazo del préstamo)
+cat("\nCreando rangos uniformes para loan_term:\n")
+data$loan_term_range <- cut(data$loan_term, breaks = 3)
+
+# Verificar la distribución de los nuevos rangos uniformes
+print("Distribución de rangos de monto de préstamo:")
+print(table(data$loan_amount_range))
+
+print("Distribución de rangos de plazo de préstamo:")
+print(table(data$loan_term_range))
+
+# Analizar la relación entre los rangos uniformes y la aprobación de préstamos
+print("Relación entre rangos de monto de préstamo y aprobación:")
+print(table(data$loan_amount_range, data$loan_status))
+
+print("Relación entre rangos de plazo de préstamo y aprobación:")
+print(table(data$loan_term_range, data$loan_status))
+
+# Visualizar la relación entre los rangos de ingresos y la aprobación de préstamos
+income_approval <- as.data.frame(prop.table(table(data$income_range, data$loan_status), margin = 1) * 100)
+colnames(income_approval) <- c("Income_Range", "Loan_Status", "Percentage")
+
+# Gráfico para rangos de ingresos
+dev.new()
+ggplot(income_approval, aes(x = Income_Range, y = Percentage, fill = Loan_Status)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  geom_text(aes(label = sprintf("%.1f%%", Percentage)), 
+            position = position_dodge(width = 0.9), vjust = -0.3) +
+  labs(title = "Porcentaje de préstamos aprobados por rango de ingresos",
+       x = "Rango de ingresos", y = "Porcentaje") +
+  theme_minimal()
+
+# Visualizar la relación entre los rangos de puntuación crediticia y la aprobación de préstamos
+cibil_approval <- as.data.frame(prop.table(table(data$cibil_range, data$loan_status), margin = 1) * 100)
+colnames(cibil_approval) <- c("Cibil_Range", "Loan_Status", "Percentage")
+
+# Gráfico para rangos de puntuación crediticia
+dev.new()
+ggplot(cibil_approval, aes(x = Cibil_Range, y = Percentage, fill = Loan_Status)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  geom_text(aes(label = sprintf("%.1f%%", Percentage)), 
+            position = position_dodge(width = 0.9), vjust = -0.3) +
+  labs(title = "Porcentaje de préstamos aprobados por rango de puntuación crediticia",
+       x = "Rango de puntuación crediticia", y = "Porcentaje") +
+  theme_minimal()
+
+# ---------------------------------------------------------------
+# 3. Preprocesamiento de datos
 # ---------------------------------------------------------------
 
 # Reemplazar valores faltantes con el valor más común de cada columna
@@ -60,7 +169,7 @@ for(var in categorical_vars) {
 }
 
 # ---------------------------------------------------------------
-# 3. Análisis exploratorio de datos
+# 4. Análisis exploratorio de datos
 # ---------------------------------------------------------------
 
 # Distribución de la variable objetivo
@@ -76,11 +185,12 @@ print("Relación entre autoempleo y aprobación de préstamos:")
 table(data$self_employed, data$loan_status)
 
 # Visualización de variables numéricas relevantes
-numeric_vars <- c("income_annum", "loan_amount", "loan_term", "cibil_score")
+varNum <- c("income_annum", "loan_amount", "loan_term", "cibil_score")
 
 # Histogramas para variables numéricas
+dev.new()
 par(mfrow=c(2,2))
-for(var in numeric_vars) {
+for(var in varNum) {
   if(var %in% colnames(data)) {
     hist(data[[var]], main=paste("Histograma de", var), xlab=var, col="lightblue")
   }
@@ -88,7 +198,67 @@ for(var in numeric_vars) {
 par(mfrow=c(1,1))
 
 # ---------------------------------------------------------------
-# 4. División de datos en entrenamiento y prueba
+# 5. Evaluar si los rangos mejoran el rendimiento del modelo
+# ---------------------------------------------------------------
+
+# Función para entrenar y evaluar un modelo con variables originales
+train_evaluate_original <- function() {
+  set.seed(123)
+  train_index <- createDataPartition(data$loan_status, p = 0.75, list = FALSE)
+  train_data <- data[train_index, ]
+  test_data <- data[-train_index, ]
+  
+  # Variables originales
+  formula_orig <- loan_status ~ income_annum + loan_amount + loan_term + cibil_score + 
+    education + self_employed + no_of_dependents
+  
+  model_orig <- rpart(formula_orig, data = train_data, method = "class", 
+                      control = rpart.control(maxdepth = 5))
+  
+  pred_orig <- predict(model_orig, test_data, type = "class")
+  conf_matrix_orig <- confusionMatrix(pred_orig, test_data$loan_status)
+  
+  return(list(
+    accuracy = conf_matrix_orig$overall["Accuracy"],
+    model = model_orig
+  ))
+}
+
+# Función para entrenar y evaluar un modelo con variables por rangos
+train_evaluate_ranges <- function() {
+  set.seed(123)
+  train_index <- createDataPartition(data$loan_status, p = 0.75, list = FALSE)
+  train_data <- data[train_index, ]
+  test_data <- data[-train_index, ]
+  
+  # Variables con rangos
+  formula_ranges <- loan_status ~ income_range + cibil_range + loan_amount_range + 
+    loan_term_range + education + self_employed + no_of_dependents
+  
+  model_ranges <- rpart(formula_ranges, data = train_data, method = "class", 
+                        control = rpart.control(maxdepth = 5))
+  
+  pred_ranges <- predict(model_ranges, test_data, type = "class")
+  conf_matrix_ranges <- confusionMatrix(pred_ranges, test_data$loan_status)
+  
+  return(list(
+    accuracy = conf_matrix_ranges$overall["Accuracy"],
+    model = model_ranges
+  ))
+}
+
+# Evaluar modelos
+cat("\nEvaluando rendimiento de modelos con variables originales vs rangos...\n")
+original_results <- train_evaluate_original()
+ranges_results <- train_evaluate_ranges()
+
+# Comparar resultados
+cat("\nResultados de evaluación:\n")
+cat("Precisión modelo con variables originales:", round(original_results$accuracy, 4), "\n")
+cat("Precisión modelo con variables por rangos:", round(ranges_results$accuracy, 4), "\n")
+
+# ---------------------------------------------------------------
+# 6. División de datos en entrenamiento y prueba
 # ---------------------------------------------------------------
 
 # Establecer semilla para reproducibilidad
@@ -100,7 +270,7 @@ train_data <- data[train_index, ]
 test_data <- data[-train_index, ]
 
 # ---------------------------------------------------------------
-# 5. Modelado: Creación de árboles de decisión
+# 7. Modelado: Creación de árboles de decisión
 # ---------------------------------------------------------------
 
 # Función para entrenar un árbol de decisión, hacer predicciones y evaluar
@@ -142,7 +312,7 @@ for(i in 1:10) {
 }
 
 # ---------------------------------------------------------------
-# 6. Encontrar el mejor árbol de decisión
+# 8. Encontrar el mejor árbol de decisión
 # ---------------------------------------------------------------
 
 # Extraer precisiones
@@ -153,6 +323,7 @@ best_model_index <- which.max(accuracies)
 best_model <- results[[best_model_index]]
 
 # Visualizar el mejor árbol
+dev.new()
 print(paste("El mejor árbol es el #", best_model_index, "con precisión:", round(best_model$accuracy, 4)))
 rpart.plot(best_model$model, extra = 104, box.palette = "RdBu", shadow.col = "gray")
 
@@ -162,7 +333,7 @@ print("Reglas que definen el comportamiento del árbol:")
 print(rules)
 
 # ---------------------------------------------------------------
-# 7. Evaluar importancia de atributos
+# 9. Evaluar importancia de atributos
 # ---------------------------------------------------------------
 
 # Calcular importancia de variables usando Random Forest como complemento
@@ -180,6 +351,7 @@ print("Los 5 atributos más relevantes:")
 print(head(var_importance_df, 5))
 
 # Visualizar importancia de variables
+dev.new()
 barplot(var_importance_df$Importance[1:5], 
         names.arg = var_importance_df$Variable[1:5],
         col = "steelblue",
@@ -188,7 +360,7 @@ barplot(var_importance_df$Importance[1:5],
         las = 2)
 
 # ---------------------------------------------------------------
-# 8. Evaluar precisión por grupos específicos
+# 10. Evaluar precisión por grupos específicos
 # ---------------------------------------------------------------
 
 # Evaluar precisión considerando solo la educación
@@ -202,7 +374,7 @@ self_employed_accuracy <- mean(best_model$predictions[test_data$self_employed ==
 print(paste("Precisión considerando solo trabajadores autónomos:", round(self_employed_accuracy, 4)))
 
 # ---------------------------------------------------------------
-# 9. Tabla de resultados
+# 11. Tabla de resultados
 # ---------------------------------------------------------------
 
 # Crear tabla con los resultados de los 10 árboles
@@ -224,10 +396,55 @@ results_table <- rbind(results_table,
 print("Tabla de resultados de los 10 árboles:")
 print(results_table, digits = 4)
 
+# Abrir nuevo dispositivo gráfico para el gráfico
+dev.new()
+
+# Convertir a formato largo para graficar (solo las primeras 10 filas, sin la media)
+results_long <- melt(results_table[1:10,], id.vars = "Tree", 
+                     variable.name = "Metric", value.name = "Value")
+
+# Crear gráfico
+ggplot(results_long, aes(x = factor(Tree), y = Value, fill = Metric)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  geom_hline(data = results_table[11,], 
+             aes(yintercept = Accuracy, color = "Media Accuracy"), 
+             linetype = "dashed") +
+  geom_hline(data = results_table[11,], 
+             aes(yintercept = PrecisionApproved, color = "Media Precision Approved"), 
+             linetype = "dashed") +
+  geom_hline(data = results_table[11,], 
+             aes(yintercept = PrecisionRejected, color = "Media Precision Rejected"), 
+             linetype = "dashed") +
+  labs(title = "Resultados de los 10 árboles de decisión",
+       x = "Árbol", y = "Valor") +
+  theme_minimal()
+
 # ---------------------------------------------------------------
-# 10. Conclusiones
+# 12. Conclusiones sobre el análisis de rangos
 # ---------------------------------------------------------------
-cat("\nCONCLUSIONES:\n")
+
+cat("\nCONCLUSIONES DEL ANÁLISIS DE RANGOS:\n")
+cat("1. Se analizaron las variables numéricas del dataset (income_annum, loan_amount, loan_term, cibil_score).\n")
+cat("2. Se crearon rangos usando umbrales constantes para income_annum y cibil_score.\n")
+cat("3. Se crearon rangos uniformes para loan_amount y loan_term.\n")
+
+if(ranges_results$accuracy > original_results$accuracy) {
+  cat("4. El modelo con variables categorizadas en rangos mejora la precisión en ", 
+      round((ranges_results$accuracy - original_results$accuracy) * 100, 2), 
+      "% respecto al modelo con variables originales.\n")
+  cat("5. La transformación de variables numéricas a rangos parece beneficiar el rendimiento del modelo.\n")
+} else {
+  cat("4. El modelo con variables originales tiene mejor precisión que el modelo con rangos (diferencia de ", 
+      round((original_results$accuracy - ranges_results$accuracy) * 100, 2), "%).\n")
+  cat("5. La transformación de variables numéricas a rangos no parece beneficiar el rendimiento del modelo en este caso.\n")
+}
+
+cat("6. Los rangos creados ofrecen mayor interpretabilidad a costa de posible pérdida de información detallada.\n")
+
+# ---------------------------------------------------------------
+# 13. Conclusiones generales del modelado
+# ---------------------------------------------------------------
+cat("\nCONCLUSIONES GENERALES DEL MODELADO:\n")
 cat("- Se han generado 10 árboles de decisión para predecir la aprobación de préstamos.\n")
 cat(paste("- La precisión media de los modelos es del:", round(mean(accuracies) * 100, 2), "%\n"))
 cat(paste("- El mejor modelo (árbol #", best_model_index, ") tiene una precisión del:", 
@@ -238,7 +455,7 @@ for(i in 1:5) {
 }
 
 # ---------------------------------------------------------------
-# 11. Respuestas a las preguntas solicitadas
+# 14. Respuestas a las preguntas solicitadas
 # ---------------------------------------------------------------
 
 # Usaremos el mejor modelo identificado previamente
@@ -253,36 +470,36 @@ test_data_with_predictions$predicted_status <- best_model$predictions
 
 # Crear un dataframe con los resultados agrupados por número de dependientes
 dependents_analysis <- test_data %>%
-  group_by(no_of_dependents) %>%  # Corregido: era "dependents"
+  group_by(no_of_dependents) %>%
   summarize(
     total = n(),
-    actual_approved = sum(loan_status == " Approved"),  # Nota el espacio antes de "Approved"
+    actual_approved = sum(loan_status == " Approved"),
     actual_approved_pct = actual_approved / total * 100
   )
 
 # Añadir predicciones por grupo de dependientes
 dependents_predictions <- test_data_with_predictions %>%
-  group_by(no_of_dependents) %>%  # Corregido: era "dependents"
+  group_by(no_of_dependents) %>%
   summarize(
     total = n(),
-    predicted_approved = sum(predicted_status == " Approved"),  # Nota el espacio antes de "Approved"
+    predicted_approved = sum(predicted_status == " Approved"),
     predicted_approved_pct = predicted_approved / total * 100
   )
 
 # Combinar ambos dataframes
-dependents_results <- merge(dependents_analysis, dependents_predictions, by="no_of_dependents")  # Corregido: era "dependents"
+dependents_results <- merge(dependents_analysis, dependents_predictions, by="no_of_dependents")
 dependents_results <- dependents_results %>%
-  select(no_of_dependents, actual_approved_pct, predicted_approved_pct)  # Corregido: era "dependents"
+  select(no_of_dependents, actual_approved_pct, predicted_approved_pct)
 
 # Convertir a formato largo para graficar
-library(reshape2)
 dependents_long <- melt(dependents_results, 
-                        id.vars = "no_of_dependents",  # Corregido: era "dependents"
+                        id.vars = "no_of_dependents",
                         variable.name = "status_type", 
                         value.name = "percentage")
 
 # Crear gráfico
-ggplot(dependents_long, aes(x=factor(no_of_dependents), y=percentage, fill=status_type)) +  # Corregido: era "dependents"
+dev.new()
+ggplot(dependents_long, aes(x=factor(no_of_dependents), y=percentage, fill=status_type)) +
   geom_bar(stat="identity", position="dodge") +
   geom_text(aes(label=sprintf("%.1f%%", percentage)), 
             position=position_dodge(width=0.9), vjust=-0.3) +
@@ -301,17 +518,17 @@ ggplot(dependents_long, aes(x=factor(no_of_dependents), y=percentage, fill=statu
 
 # Filtrar clientes rechazados con educación 'Not Graduate'
 rejected_clients <- test_data %>%
-  filter(loan_status == " Rejected" & education == " Not Graduate")  # Nota el espacio antes de los valores
+  filter(loan_status == " Rejected" & education == " Not Graduate")
 
 # Crear un dataframe con estos clientes pero cambiando su educación a 'Graduate'
 modified_clients <- rejected_clients
-modified_clients$education <- " Graduate"  # Nota el espacio antes de "Graduate"
+modified_clients$education <- " Graduate"
 
 # Predecir con el modelo para estos clientes modificados
 modified_predictions <- predict(best_tree, modified_clients, type = "class")
 
 # Identificar aquellos que serían aprobados con el cambio
-would_be_approved <- which(modified_predictions == " Approved")  # Nota el espacio antes de "Approved"
+would_be_approved <- which(modified_predictions == " Approved")
 clients_education_impact <- rejected_clients[would_be_approved, ]
 
 # Mostrar resultados
@@ -326,10 +543,10 @@ if(nrow(clients_education_impact) > 0) {
 
 # Filtrar clientes rechazados
 rejected_clients <- test_data %>%
-  filter(loan_status == " Rejected")  # Nota el espacio antes de "Rejected"
+  filter(loan_status == " Rejected")
 
 # Función para encontrar ingresos mínimos necesarios para aprobación
-find_min_income <- function(client, model, step = 1000000, max_increase = 10000000) {  # Ajustado paso y máximo
+find_min_income <- function(client, model, step = 1000000, max_increase = 10000000) {
   # Copiar el cliente original
   test_client <- client
   original_income <- client$income_annum
@@ -339,7 +556,7 @@ find_min_income <- function(client, model, step = 1000000, max_increase = 100000
     test_client$income_annum <- original_income + income_increase
     prediction <- predict(model, test_client, type = "class")
     
-    if(prediction == " Approved") {  # Nota el espacio antes de "Approved"
+    if(prediction == " Approved") {
       return(test_client$income_annum)
     }
   }
@@ -354,7 +571,7 @@ sample_size <- min(20, nrow(rejected_clients))
 sampled_clients <- rejected_clients[sample(nrow(rejected_clients), sample_size), ]
 
 income_results <- data.frame(
-  client_id = sampled_clients$loan_id,  # Usar el ID real del préstamo
+  client_id = sampled_clients$loan_id,
   current_income = sampled_clients$income_annum,
   min_income_needed = NA
 )
@@ -377,10 +594,10 @@ print(income_results)
 
 # Filtrar clientes aprobados
 approved_clients <- test_data %>%
-  filter(loan_status == " Approved")  # Nota el espacio antes de "Approved"
+  filter(loan_status == " Approved")
 
 # Función para encontrar el préstamo máximo que sería aprobado
-find_max_loan <- function(client, model, step = 1000000, max_increase = 20000000) {  # Ajustado paso y máximo
+find_max_loan <- function(client, model, step = 1000000, max_increase = 20000000) {
   # Copiar el cliente original
   test_client <- client
   original_loan <- client$loan_amount
@@ -392,7 +609,7 @@ find_max_loan <- function(client, model, step = 1000000, max_increase = 20000000
     test_client$loan_amount <- original_loan + loan_increase
     prediction <- predict(model, test_client, type = "class")
     
-    if(prediction == " Rejected") {  # Nota el espacio antes de "Rejected"
+    if(prediction == " Rejected") {
       return(last_approved)  # Devolver el último monto aprobado
     } else {
       last_approved <- test_client$loan_amount
@@ -409,7 +626,7 @@ sample_size <- min(20, nrow(approved_clients))
 sampled_approved <- approved_clients[sample(nrow(approved_clients), sample_size), ]
 
 loan_results <- data.frame(
-  client_id = sampled_approved$loan_id,  # Usar el ID real del préstamo
+  client_id = sampled_approved$loan_id,
   current_loan = sampled_approved$loan_amount,
   max_loan_possible = NA
 )
@@ -426,14 +643,3 @@ loan_results$percentage_increase <- (loan_results$loan_increase / loan_results$c
 # Mostrar resultados
 cat("\nMonto máximo de préstamo posible para clientes aprobados:\n")
 print(loan_results)
-
-# Resumen final
-cat("\n-------------------------------------------------------------\n")
-cat("RESUMEN DE RESULTADOS:\n")
-cat("-------------------------------------------------------------\n")
-cat(paste("1. Se generó un gráfico comparando porcentajes de aprobación reales vs predichos por número de dependientes.\n"))
-cat(paste("2. Se identificaron", nrow(clients_education_impact), "clientes que serían aprobados si cambiaran su educación a 'Graduate'.\n"))
-cat(paste("3. Para los clientes rechazados, el aumento promedio de ingresos necesario es de", 
-          round(mean(income_results$percentage_increase, na.rm=TRUE), 2), "%.\n"))
-cat(paste("4. Los clientes con préstamos aprobados podrían haber solicitado en promedio un", 
-          round(mean(loan_results$percentage_increase, na.rm=TRUE), 2), "% más de monto.\n"))
