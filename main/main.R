@@ -11,7 +11,7 @@ cat("\014")
 if(!is.null(dev.list())) dev.off()
 graphics.off()
 
-data <- read.csv("../data/2025_loan_approval_dataset.csv")
+data <- read.csv("data/2025_loan_approval_dataset.csv")
 
 # Revisar estructura de los datos
 str(data)
