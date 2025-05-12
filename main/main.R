@@ -319,18 +319,18 @@ for(i in 1:10) {
 accuracies <- sapply(resultados, function(r) r$accuracy)
 
 # Encontrar el índice del mejor modelo
-best_model_index <- which.max(accuracies)
-best_model <- resultados[[best_model_index]]
+mejorModeloIndex <- which.max(accuracies)
+mejorModelo <- resultados[[mejorModeloIndex]]
 
 # Visualizar el mejor árbol
 dev.new()
-print(paste("El mejor árbol es el #", best_model_index, "con precisión:", round(best_model$accuracy, 4)))
-rpart.plot(best_model$model, extra = 104, box.palette = "RdBu", shadow.col = "gray")
+print(paste("El mejor árbol es el #", mejorModeloIndex, "con precisión:", round(mejorModelo$accuracy, 4)))
+rpart.plot(mejorModelo$model, extra = 104, box.palette = "RdBu", shadow.col = "gray")
 
 # Generar reglas del mejor árbol
-rules <- rpart.rules(best_model$model, roundint = FALSE)
+reglas <- rpart.rules(mejorModelo$model, roundint = FALSE)
 print("Reglas que definen el comportamiento del árbol:")
-print(rules)
+print(reglas)
 
 # ---------------------------------------------------------------
 # 9. Evaluar importancia de atributos
@@ -338,22 +338,22 @@ print(rules)
 
 # Calcular importancia de variables usando Random Forest como complemento
 set.seed(123)
-rf_model <- randomForest(loan_status ~ ., data = dataPrueba)
-var_importance <- importance(rf_model)
-var_importance_df <- data.frame(
-  Variable = row.names(var_importance),
-  Importance = var_importance[,1]
+modeloRf <- randomForest(loan_status ~ ., data = dataPrueba)
+varImportante <- importance(modeloRf)
+varImportanteDf <- data.frame(
+  Variable = row.names(varImportante),
+  Importance = varImportante[,1]
 )
-var_importance_df <- var_importance_df[order(var_importance_df$Importance, decreasing = TRUE),]
+varImportanteDf <- varImportanteDf[order(varImportanteDf$Importance, decreasing = TRUE),]
 
 # Mostrar los 5 atributos más relevantes
 print("Los 5 atributos más relevantes:")
-print(head(var_importance_df, 5))
+print(head(varImportanteDf, 5))
 
 # Visualizar importancia de variables
 dev.new()
-barplot(var_importance_df$Importance[1:5], 
-        names.arg = var_importance_df$Variable[1:5],
+barplot(varImportanteDf$Importance[1:5], 
+        names.arg = varImportanteDf$Variable[1:5],
         col = "steelblue",
         main = "Importancia de Variables",
         ylab = "Importancia",
@@ -364,21 +364,21 @@ barplot(var_importance_df$Importance[1:5],
 # ---------------------------------------------------------------
 
 # Evaluar precisión considerando solo la educación
-education_accuracy <- mean(best_model$predicciones[dataTest$education == " Graduate"] == 
+educationAccuracy <- mean(mejorModelo$predicciones[dataTest$education == " Graduate"] == 
                              dataTest$loan_status[dataTest$education == " Graduate"])
-print(paste("Precisión considerando solo educación (Graduate):", round(education_accuracy, 4)))
+print(paste("Precisión considerando solo educación (Graduate):", round(educationAccuracy, 4)))
 
 # Evaluar precisión considerando solo si es trabajador autónomo
-self_employed_accuracy <- mean(best_model$predicciones[dataTest$self_employed == " Yes"] == 
+accuracyTrabajadorAuto <- mean(mejorModelo$predicciones[dataTest$self_employed == " Yes"] == 
                                  dataTest$loan_status[dataTest$self_employed == " Yes"])
-print(paste("Precisión considerando solo trabajadores autónomos:", round(self_employed_accuracy, 4)))
+print(paste("Precisión considerando solo trabajadores autónomos:", round(accuracyTrabajadorAuto, 4)))
 
 # ---------------------------------------------------------------
 # 11. Tabla de resultados
 # ---------------------------------------------------------------
 
 # Crear tabla con los resultados de los 10 árboles
-results_table <- data.frame(
+resultadosTabla <- data.frame(
   Tree = 1:10,
   Accuracy = sapply(resultados, function(r) r$accuracy),
   PrecisionApproved = sapply(resultados, function(r) r$precisionAprobada),
@@ -386,33 +386,33 @@ results_table <- data.frame(
 )
 
 # Calcular medias
-results_table <- rbind(results_table, 
+resultadosTabla <- rbind(resultadosTabla, 
                        data.frame(Tree = "Media", 
-                                  Accuracy = mean(results_table$Accuracy),
-                                  PrecisionApproved = mean(results_table$PrecisionApproved),
-                                  PrecisionRejected = mean(results_table$PrecisionRejected)))
+                                  Accuracy = mean(resultadosTabla$Accuracy),
+                                  PrecisionApproved = mean(resultadosTabla$PrecisionApproved),
+                                  PrecisionRejected = mean(resultadosTabla$PrecisionRejected)))
 
 # Mostrar tabla de resultados
 print("Tabla de resultados de los 10 árboles:")
-print(results_table, digits = 4)
+print(resultadosTabla, digits = 4)
 
 # Abrir nuevo dispositivo gráfico para el gráfico
 dev.new()
 
 # Convertir a formato largo para graficar (solo las primeras 10 filas, sin la media)
-results_long <- melt(results_table[1:10,], id.vars = "Tree", 
+resultadosLong <- melt(resultadosTabla[1:10,], id.vars = "Tree", 
                      variable.name = "Metric", value.name = "Value")
 
 # Crear gráfico
-ggplot(results_long, aes(x = factor(Tree), y = Value, fill = Metric)) +
+ggplot(resultadosLong, aes(x = factor(Tree), y = Value, fill = Metric)) +
   geom_bar(stat = "identity", position = "dodge") +
-  geom_hline(data = results_table[11,], 
+  geom_hline(data = resultadosTabla[11,], 
              aes(yintercept = Accuracy, color = "Media Accuracy"), 
              linetype = "dashed") +
-  geom_hline(data = results_table[11,], 
+  geom_hline(data = resultadosTabla[11,], 
              aes(yintercept = PrecisionApproved, color = "Media Precision Approved"), 
              linetype = "dashed") +
-  geom_hline(data = results_table[11,], 
+  geom_hline(data = resultadosTabla[11,], 
              aes(yintercept = PrecisionRejected, color = "Media Precision Rejected"), 
              linetype = "dashed") +
   labs(title = "Resultados de los 10 árboles de decisión",
@@ -447,11 +447,11 @@ cat("6. Los rangos creados ofrecen mayor interpretabilidad a costa de posible p�
 cat("\nCONCLUSIONES GENERALES DEL MODELADO:\n")
 cat("- Se han generado 10 árboles de decisión para predecir la aprobación de préstamos.\n")
 cat(paste("- La precisión media de los modelos es del:", round(mean(accuracies) * 100, 2), "%\n"))
-cat(paste("- El mejor modelo (árbol #", best_model_index, ") tiene una precisión del:", 
-          round(best_model$accuracy * 100, 2), "%\n"))
+cat(paste("- El mejor modelo (árbol #", mejorModeloIndex, ") tiene una precisión del:", 
+          round(mejorModelo$accuracy * 100, 2), "%\n"))
 cat("- Las variables más relevantes para la predicción son:\n")
 for(i in 1:5) {
-  cat(paste("  ", i, ". ", var_importance_df$Variable[i], "\n"))
+  cat(paste("  ", i, ". ", varImportanteDf$Variable[i], "\n"))
 }
 
 # ---------------------------------------------------------------
@@ -459,17 +459,17 @@ for(i in 1:5) {
 # ---------------------------------------------------------------
 
 # Usaremos el mejor modelo identificado previamente
-best_tree <- best_model$model
+mejorArbol <- mejorModelo$model
 
 # Pregunta 1: Generar una representación gráfica sobre porcentajes de valores actuales y 
 # predichos por el modelo por número de dependientes
 
 # Extraer datos de test para análisis
-test_data_with_predictions <- dataTest
-test_data_with_predictions$predicted_status <- best_model$predicciones
+dataTestPredic <- dataTest
+dataTestPredic$predicted_status <- mejorModelo$predicciones
 
 # Crear un dataframe con los resultados agrupados por número de dependientes
-dependents_analysis <- dataTest %>%
+analisisDependiente <- dataTest %>%
   group_by(no_of_dependents) %>%
   summarize(
     total = n(),
@@ -478,7 +478,7 @@ dependents_analysis <- dataTest %>%
   )
 
 # Añadir predicciones por grupo de dependientes
-dependents_predictions <- test_data_with_predictions %>%
+prediccionesDependientes <- dataTestPredic %>%
   group_by(no_of_dependents) %>%
   summarize(
     total = n(),
@@ -487,19 +487,19 @@ dependents_predictions <- test_data_with_predictions %>%
   )
 
 # Combinar ambos dataframes
-dependents_results <- merge(dependents_analysis, dependents_predictions, by="no_of_dependents")
-dependents_results <- dependents_results %>%
+resultadosDependientes <- merge(analisisDependiente, prediccionesDependientes, by="no_of_dependents")
+resultadosDependientes <- resultadosDependientes %>%
   select(no_of_dependents, actual_approved_pct, predicted_approved_pct)
 
 # Convertir a formato largo para graficar
-dependents_long <- melt(dependents_results, 
+longDependientes <- melt(resultadosDependientes, 
                         id.vars = "no_of_dependents",
                         variable.name = "status_type", 
                         value.name = "percentage")
 
 # Crear gráfico
 dev.new()
-ggplot(dependents_long, aes(x=factor(no_of_dependents), y=percentage, fill=status_type)) +
+ggplot(longDependientes, aes(x=factor(no_of_dependents), y=percentage, fill=status_type)) +
   geom_bar(stat="identity", position="dodge") +
   geom_text(aes(label=sprintf("%.1f%%", percentage)), 
             position=position_dodge(width=0.9), vjust=-0.3) +
@@ -517,47 +517,47 @@ ggplot(dependents_long, aes(x=factor(no_of_dependents), y=percentage, fill=statu
 # su educación de 'Not Graduate' a 'Graduate', les hubiesen concedido el crédito
 
 # Filtrar clientes rechazados con educación 'Not Graduate'
-rejected_clients <- dataTest %>%
+clientesRechazados <- dataTest %>%
   filter(loan_status == " Rejected" & education == " Not Graduate")
 
 # Crear un dataframe con estos clientes pero cambiando su educación a 'Graduate'
-modified_clients <- rejected_clients
-modified_clients$education <- " Graduate"
+clientesModificados <- clientesRechazados
+clientesModificados$education <- " Graduate"
 
 # Predecir con el modelo para estos clientes modificados
-modified_predictions <- predict(best_tree, modified_clients, type = "class")
+prediccionesModificadas <- predict(mejorArbol, clientesModificados, type = "class")
 
 # Identificar aquellos que serían aprobados con el cambio
-would_be_approved <- which(modified_predictions == " Approved")
-clients_education_impact <- rejected_clients[would_be_approved, ]
+seranAprobados <- which(prediccionesModificadas == " Approved")
+impactoClientes <- clientesRechazados[seranAprobados, ]
 
 # Mostrar resultados
 cat("\nClientes que serían aprobados cambiando su educación a 'Graduate':\n")
-print(paste("Total de clientes impactados:", nrow(clients_education_impact)))
-if(nrow(clients_education_impact) > 0) {
-  print(head(clients_education_impact, 10))  # Mostrar los primeros 10 como ejemplo
+print(paste("Total de clientes impactados:", nrow(impactoClientes)))
+if(nrow(impactoClientes) > 0) {
+  print(head(impactoClientes, 10))  # Mostrar los primeros 10 como ejemplo
 }
 
 # Pregunta 3: Para cada cliente con crédito rechazado, identificar los ingresos 
 # mínimos con los que le habrían aprobado el préstamo
 
 # Filtrar clientes rechazados
-rejected_clients <- dataTest %>%
+clientesRechazados <- dataTest %>%
   filter(loan_status == " Rejected")
 
 # Función para encontrar ingresos mínimos necesarios para aprobación
-find_min_income <- function(client, model, step = 1000000, max_increase = 10000000) {
+encontrarMinimosNecesarios <- function(client, model, step = 1000000, max_increase = 10000000) {
   # Copiar el cliente original
-  test_client <- client
-  original_income <- client$income_annum
+  clienteTest <- client
+  ingresoOrig <- client$income_annum
   
   # Incrementar ingresos hasta que sea aprobado o se alcance el máximo
   for(income_increase in seq(0, max_increase, by = step)) {
-    test_client$income_annum <- original_income + income_increase
-    prediction <- predict(model, test_client, type = "class")
+    clienteTest$income_annum <- ingresoOrig + income_increase
+    prediction <- predict(model, clienteTest, type = "class")
     
     if(prediction == " Approved") {
-      return(test_client$income_annum)
+      return(clienteTest$income_annum)
     }
   }
   
@@ -567,79 +567,79 @@ find_min_income <- function(client, model, step = 1000000, max_increase = 100000
 
 # Calcular ingresos mínimos para cada cliente rechazado (limitado a 20 para eficiencia)
 set.seed(123)  # Para reproducibilidad
-sample_size <- min(20, nrow(rejected_clients))
-sampled_clients <- rejected_clients[sample(nrow(rejected_clients), sample_size), ]
+tamanioMuestra <- min(20, nrow(clientesRechazados))
+clientesMuestra <- clientesRechazados[sample(nrow(clientesRechazados), tamanioMuestra), ]
 
-income_results <- data.frame(
-  client_id = sampled_clients$loan_id,
-  current_income = sampled_clients$income_annum,
+resultadoIngresos <- data.frame(
+  client_id = clientesMuestra$loan_id,
+  current_income = clientesMuestra$income_annum,
   min_income_needed = NA
 )
 
 # Calcular para cada cliente en la muestra
-for(i in 1:nrow(sampled_clients)) {
-  income_results$min_income_needed[i] <- find_min_income(sampled_clients[i,], best_tree)
+for(i in 1:nrow(clientesMuestra)) {
+  resultadoIngresos$min_income_needed[i] <- encontrarMinimosNecesarios(clientesMuestra[i,], mejorArbol)
 }
 
 # Calcular incremento necesario
-income_results$income_increase <- income_results$min_income_needed - income_results$current_income
-income_results$percentage_increase <- (income_results$income_increase / income_results$current_income) * 100
+resultadoIngresos$income_increase <- resultadoIngresos$min_income_needed - resultadoIngresos$current_income
+resultadoIngresos$percentage_increase <- (resultadoIngresos$income_increase / resultadoIngresos$current_income) * 100
 
 # Mostrar resultados
 cat("\nIngresos mínimos necesarios para clientes con préstamo rechazado:\n")
-print(income_results)
+print(resultadoIngresos)
 
 # Pregunta 4: Para cada cliente con crédito aprobado, identificar la máxima cantidad
 # de préstamo que podría haber pedido, y aún haber sido aprobado
 
 # Filtrar clientes aprobados
-approved_clients <- dataTest %>%
+clientesAprobados <- dataTest %>%
   filter(loan_status == " Approved")
 
 # Función para encontrar el préstamo máximo que sería aprobado
-find_max_loan <- function(client, model, step = 1000000, max_increase = 20000000) {
+encontrarMaxPrestamo <- function(client, model, step = 1000000, max_increase = 20000000) {
   # Copiar el cliente original
-  test_client <- client
-  original_loan <- client$loan_amount
+  clienteTest <- client
+  prestamoOrig <- client$loan_amount
   
   # Incrementar monto del préstamo hasta que sea rechazado o se alcance el máximo
-  last_approved <- original_loan
+  ultimoAprobado <- prestamoOrig
   
   for(loan_increase in seq(step, max_increase, by = step)) {
-    test_client$loan_amount <- original_loan + loan_increase
-    prediction <- predict(model, test_client, type = "class")
+    clienteTest$loan_amount <- prestamoOrig + loan_increase
+    prediction <- predict(model, clienteTest, type = "class")
     
     if(prediction == " Rejected") {
-      return(last_approved)  # Devolver el último monto aprobado
+      return(ultimoAprobado)  # Devolver el último monto aprobado
     } else {
-      last_approved <- test_client$loan_amount
+      ultimoAprobado <- clienteTest$loan_amount
     }
   }
   
   # Si todas las pruebas son aprobadas, devolver el máximo
-  return(original_loan + max_increase)
+  return(prestamoOrig + max_increase)
 }
 
 # Calcular préstamo máximo para una muestra de clientes aprobados
 set.seed(456)  # Para reproducibilidad
-sample_size <- min(20, nrow(approved_clients))
-sampled_approved <- approved_clients[sample(nrow(approved_clients), sample_size), ]
+tamanioMuestra <- min(20, nrow(clientesAprobados))
+muestraAprobado <- clientesAprobados[sample(nrow(clientesAprobados), tamanioMuestra), ]
 
-loan_results <- data.frame(
-  client_id = sampled_approved$loan_id,
-  current_loan = sampled_approved$loan_amount,
+resultadosPrestamo <- data.frame(
+  client_id = muestraAprobado$loan_id,
+  current_loan = muestraAprobado$loan_amount,
   max_loan_possible = NA
 )
 
 # Calcular para cada cliente en la muestra
-for(i in 1:nrow(sampled_approved)) {
-  loan_results$max_loan_possible[i] <- find_max_loan(sampled_approved[i,], best_tree)
+for(i in 1:nrow(muestraAprobado)) {
+  resultadosPrestamo$max_loan_possible[i] <- encontrarMaxPrestamo(muestraAprobado[i,], mejorArbol)
 }
 
 # Calcular incremento posible
-loan_results$loan_increase <- loan_results$max_loan_possible - loan_results$current_loan
-loan_results$percentage_increase <- (loan_results$loan_increase / loan_results$current_loan) * 100
+resultadosPrestamo$loan_increase <- resultadosPrestamo$max_loan_possible - resultadosPrestamo$current_loan
+resultadosPrestamo$percentage_increase <- (resultadosPrestamo$loan_increase / resultadosPrestamo$current_loan) * 100
 
 # Mostrar resultados
 cat("\nMonto máximo de préstamo posible para clientes aprobados:\n")
-print(loan_results)
+print(resultadosPrestamo)
